@@ -44,4 +44,8 @@ class S826(object):
         lowerV = self.lowerV[chan]
         rangeV = self.rangeV[chan]
         setpoint = int((outputV-lowerV)/rangeV*0xffff)
+        # 加入打印，看看写入 DAC 的值
+        # print(f"Writing to DAC: Channel={chan}, OutputV={outputV}, Setpoint={setpoint}")
         s826dll.S826_DacDataWrite(BOARD,chan,setpoint,0)
+        err = s826dll.S826_DacDataWrite(BOARD, chan, setpoint, 0)
+    

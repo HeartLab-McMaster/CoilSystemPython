@@ -11,12 +11,22 @@ Version
 =============================================================================
 """
 
-import cv2, sys, re, time
+
+import cv2
+import sys
+import re
+import time
+from PyQt5.QtCore import QThread, pyqtSignal
 from pydc1394 import Camera
 import filterlib
 import drawing
 import objectDetection
 from objectDetection import Agent
+from pypylon import pylon
+import numpy as np
+import traceback  
+import datetime
+
 
 #=============================================================================================
 # Mouse callback Functions
@@ -27,8 +37,89 @@ def showClickedCoordinate(event,x,y,flags,param):
         # mouseX,mouseY = x,y
         print('Clicked position  x: {} y: {}'.format(x,y))
 
+
+
+
+#=============================================================================================
+# Camera Thread to handle Basler Pylon Camera in a separate thread
+#=============================================================================================
+class CameraThread(QThread):
+  
+    frame_ready = pyqtSignal(object)  
+
+    def __init__(self, camera_index):
+        super(CameraThread, self).__init__()
+        self.running = False
+        self.camera = None
+        self.converter = None
+        self.camera_index = camera_index  
+
+    def run(self):
+       
+        try:
+            devices = pylon.TlFactory.GetInstance().EnumerateDevices()
+            if len(devices) <= self.camera_index:
+                raise Exception(f"❌ No camera found at index {self.camera_index}")
+
+           
+            selected_device = devices[self.camera_index]
+            print(f"✅ Opening camera: {selected_device.GetModelName()}")
+
+          
+            self.camera = pylon.InstantCamera(pylon.TlFactory.GetInstance().CreateDevice(selected_device))
+            self.camera.Open()
+            self.camera.StartGrabbing(pylon.GrabStrategy_LatestImageOnly)
+
+            
+            self.converter = pylon.ImageFormatConverter()
+            self.converter.OutputPixelFormat = pylon.PixelType_BGR8packed
+            self.converter.OutputBitAlignment = pylon.OutputBitAlignment_MsbAligned
+
+            print(f"✅ Camera {self.camera_index} started grabbing.")
+            self.running = True
+
+            while self.running and self.camera.IsGrabbing():
+                grabResult = self.camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
+                
+               
+                if not grabResult.IsValid() or not grabResult.GrabSucceeded():
+                    # print(f"⚠️ Camera {self.camera_index}: No valid frame received.")
+                    grabResult.Release()
+                    continue
+                
+                
+                image = self.converter.Convert(grabResult)
+                frame = image.GetArray()
+                
+                # print(f"📷 Camera {self.camera_index} frame shape: {frame.shape}")
+
+                if self.frame_ready:
+                    # print(f"✅ Emitting frame from Camera {self.camera_index}")  # ✅ 确保触发
+                    self.frame_ready.emit(frame)
+                grabResult.Release()
+
+        except Exception as e:
+            print(f"❌ Camera {self.camera_index} error: {e}")
+        finally:
+            self.stop()
+            print(f"✅ Camera {self.camera_index} thread ended.")
+
+    def stop(self):
+        
+        self.running = False
+        if self.camera and self.camera.IsGrabbing():
+            self.camera.StopGrabbing()
+        if self.camera:
+            self.camera.Close()
+
+        self.quit()  
+        self.wait()  
+        print(f"✅ Camera {self.camera_index} stopped successfully")
+
+
+
 class Vision(object):
-    def __init__(self,index,type,guid=0000000000000000,buffersize=10):
+    def __init__(self,index,type, guid=0000000000000000,buffersize=10):
         self._id = index
         self._type = type
         self._guid = guid
@@ -37,7 +128,10 @@ class Vision(object):
         self._isObjectDetectionEnabled = False
         self._isSnapshotEnabled = False
         self._detectionAlgorithm = ''
+        self.camera_thread = None
         self.filterRouting = [] # data structure: {"filterName", "args"}, defined in the GUI text editor
+        # self._camera_index = camera_index  
+
 
         # instances of Agent class. You can define an array if you have multiple agents.
         # Pass them to *processObjectDetection()*
@@ -51,79 +145,42 @@ class Vision(object):
         self._isVideoWritingEnabled = False
         self.videoWriter =  None
 
-        if self.isFireWire():
-            self.cam = Camera(guid=self._guid)
-            print("====================================================")
-            print("CameraId:", self._id)
-            print("Model:", self.cam.model)
-            print("GUID:", self.cam.guid)
-            print("Mode:", self.cam.mode)
-            print("Framerate: ", self.cam.rate)
-            print("====================================================")
-            self.cam.start_capture(bufsize=buffersize)
-            self.cam.start_video()
-        else:
-            self.cap = cv2.VideoCapture(0)
-            if not self.cap.isOpened():
-                print('Camera is not detected. End program.')
-                self.cap.release()
-                sys.exit()
 
-        cv2.namedWindow(self.windowName(),16) # cv2.GUI_NORMAL = 16
-        cv2.moveWindow(self.windowName(), 600,-320+340*self._id);
-        cv2.setMouseCallback(self.windowName(),showClickedCoordinate)
+
+    def process_frame(self, frame):
+ 
+        if not self._isFilterBypassed and self.filterRouting:
+            frame = self.processFilters(frame.copy())
+
+        if self._isObjectDetectionEnabled:
+            frame = self.processObjectDetection(frame, frame)
+
+        if self.isDrawingEnabled():
+            frame = self.processDrawings(frame)
+
+        if self.isSnapshotEnabled():
+            snapshot_frame = frame.copy()
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"snapshot_{timestamp}.png"
+            cv2.imwrite(filename, filterlib.color(snapshot_frame))
+            print(f"✅ snapshot: {filename}")
+            self.setStateSnapshotEnabled(False)
+
+       
+        if self.isVideoWritingEnabled() and self.videoWriter is not None:
+            self.videoWriter.write(filterlib.color(frame))
+
+
+
+
+        return frame  
+    
+    
 
     def updateFrame(self):
-        if self.isFireWire():
-            if self.isUpdating():
-                frameOriginal = self.cam.dequeue()
-                if not self.isFilterBypassed() and not self.filterRouting == []:
-                    frameFiltered = self.processFilters(frameOriginal.copy())
-                else:
-                    frameFiltered = frameOriginal
-                if self.isObjectDetectionEnabled():
-                    frameProcessed = self.processObjectDetection(frameFiltered,frameOriginal)
-                else:
-                    frameProcessed = frameFiltered
-                if self.isDrawingEnabled():
-                    frameProcessed = self.processDrawings(frameProcessed)
-                if self.isSnapshotEnabled():
-                    cv2.imwrite('snapshot.png',filterlib.color(frameProcessed))
-                    self.setStateSnapshotEnabled(False)
-                if self.isVideoWritingEnabled():
-                    self.videoWriter.write(filterlib.color(frameProcessed))
-                cv2.imshow(self.windowName(),frameProcessed)
-                frameOriginal.enqueue()
-        else:
-            if self.isUpdating():
-                _, frameOriginal = self.cap.read()
-                if not self.isFilterBypassed() and not self.filterRouting == []:
-                    frameFiltered = self.processFilters(frameOriginal.copy())
-                else:
-                    frameFiltered = frameOriginal
-                if self.isObjectDetectionEnabled():
-                    frameProcessed = self.processObjectDetection(frameFiltered,frameOriginal)
-                else:
-                    frameProcessed = frameFiltered
-                if self.isDrawingEnabled():
-                    frameProcessed = self.processDrawings(frameProcessed)
-                if self.isSnapshotEnabled():
-                    cv2.imwrite('snapshot.png',filterlib.color(frameProcessed))
-                    self.setStateSnapshotEnabled(False)
-                if self.isVideoWritingEnabled():
-                    self.videoWriter.write(filterlib.color(frameProcessed))
-                cv2.imshow(self.windowName(),frameProcessed)
+        pass
 
-    def closeCamera(self):
-        if not self.videoWriter == None:
-            self.videoWriter.release()
-            self.videoWriter = None
-        if self.isFireWire():
-            self.cam.stop_video()
-        else:
-            self.cap.release
-        cv2.destroyWindow(self.windowName())
-
+        
     #==============================================================================================
     # obtain instance attributes
     #==============================================================================================
@@ -168,7 +225,11 @@ class Vision(object):
         self._isVideoWritingEnabled = state
 
     def setStateSnapshotEnabled(self,state):
+
         self._isSnapshotEnabled = state
+        # print(f"⚡ Snapshot Enabled: {state}")
+
+     
 
     #==============================================================================================
     # Video recording

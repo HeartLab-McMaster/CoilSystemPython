@@ -6,5 +6,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = GUI()
     window.show()
-    window.move(1000, 100) # position of the main GUI
-    sys.exit(app.exec_())
+    window.move(1000, 100)
+
+    sys.exit(app.exec_())  

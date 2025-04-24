@@ -1,0 +1,1 @@
+savedcmd_/home/heartlab2/Documents/CoilSystemPython/s826/driver/modules.order := {   echo /home/heartlab2/Documents/CoilSystemPython/s826/driver/s826.o; :; } > /home/heartlab2/Documents/CoilSystemPython/s826/driver/modules.order

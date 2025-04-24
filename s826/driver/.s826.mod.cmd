@@ -1,0 +1,1 @@
+savedcmd_/home/heartlab2/Documents/CoilSystemPython/s826/driver/s826.mod := printf '%s\n'   s826.o | awk '!x[$$0]++ { print("/home/heartlab2/Documents/CoilSystemPython/s826/driver/"$$0) }' > /home/heartlab2/Documents/CoilSystemPython/s826/driver/s826.mod

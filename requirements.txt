@@ -1,0 +1,7 @@
+sudo pip3 uninstall opencv-python -y
+sudo pip3 uninstall opencv-contrib-python -y
+sudo pip3 uninstall numpy -y
+sudo pip3 uninstall matplotlib -y
+sudo pip3 uninstall pyqt5 -y
+apt-get install qttools5-dev-tools
+apt-get install coriander

@@ -1,0 +1,1 @@
+savedcmd_/home/heartlab2/Documents/CoilSystemPython/s826/driver/s826.ko := ld -r -m elf_x86_64 -z noexecstack --build-id=sha1  -T scripts/module.lds -o /home/heartlab2/Documents/CoilSystemPython/s826/driver/s826.ko /home/heartlab2/Documents/CoilSystemPython/s826/driver/s826.o /home/heartlab2/Documents/CoilSystemPython/s826/driver/s826.mod.o

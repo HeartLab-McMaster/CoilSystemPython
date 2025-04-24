@@ -6,7 +6,7 @@ from matplotlib.animation import TimedAnimation
 from matplotlib.lines import Line2D
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
-class CustomFigCanvas(FigureCanvas, TimedAnimation):
+class CustomFigCanvas(TimedAnimation, FigureCanvas):
     ''' A class that inherited matplotlib backend. used for plotting field value in real time. '''
     def __init__(self):
         self.addedDataX = []
@@ -80,28 +80,34 @@ class CustomFigCanvas(FigureCanvas, TimedAnimation):
         self.draw()
         self.isZoomed = not self.isZoomed
 
-    def _draw_frame(self, framedata):
+    def _draw_frame(self, frame):
         margin = 2
-        while(len(self.addedDataX) > 0):
+        
+        # Process all added data points
+        while len(self.addedDataX) > 0:
             self.x = np.roll(self.x, -1)
             self.y = np.roll(self.y, -1)
             self.z = np.roll(self.z, -1)
-            self.x[-1] = self.addedDataX[0]
-            self.y[-1] = self.addedDataY[0]
-            self.z[-1] = self.addedDataZ[0]
-            del(self.addedDataX[0])
-            del(self.addedDataY[0])
-            del(self.addedDataZ[0])
-        self.line1.set_data(self.t[ 0 : self.t.size - margin ], self.x[ 0 : self.t.size - margin ])
-        self.line1_tail.set_data(np.append(self.t[-10:-1 - margin], self.t[-1 - margin]), np.append(self.x[-10:-1 - margin], self.x[-1 - margin]))
-        self.line1_head.set_data(self.t[-1 - margin], self.x[-1 - margin])
+            self.x[-1] = self.addedDataX.pop(0)  # Pop from the front of the list
+            self.y[-1] = self.addedDataY.pop(0)
+            self.z[-1] = self.addedDataZ.pop(0)
+        
+        # Set the data for lines
+        self.line1.set_data(self.t[:-margin], self.x[:-margin])
+        self.line2.set_data(self.t[:-margin], self.y[:-margin])
+        self.line3.set_data(self.t[:-margin], self.z[:-margin])
 
-        self.line2.set_data(self.t[ 0 : self.t.size - margin ], self.y[ 0 : self.t.size - margin ])
-        self.line2_tail.set_data(np.append(self.t[-10:-1 - margin], self.t[-1 - margin]), np.append(self.y[-10:-1 - margin], self.y[-1 - margin]))
-        self.line2_head.set_data(self.t[-1 - margin], self.y[-1 - margin])
+        # Update tails with the last 10 points + margin
+        self.line1_tail.set_data(np.concatenate((self.t[-10:-1-margin], [self.t[-1-margin]])), np.concatenate((self.x[-10:-1-margin], [self.x[-1-margin]])))
+        self.line2_tail.set_data(np.concatenate((self.t[-10:-1-margin], [self.t[-1-margin]])), np.concatenate((self.y[-10:-1-margin], [self.y[-1-margin]])))
+        self.line3_tail.set_data(np.concatenate((self.t[-10:-1-margin], [self.t[-1-margin]])), np.concatenate((self.z[-10:-1-margin], [self.z[-1-margin]])))
 
-        self.line3.set_data(self.t[ 0 : self.t.size - margin ], self.z[ 0 : self.t.size - margin ])
-        self.line3_tail.set_data(np.append(self.t[-10:-1 - margin], self.t[-1 - margin]), np.append(self.z[-10:-1 - margin], self.z[-1 - margin]))
-        self.line3_head.set_data(self.t[-1 - margin], self.z[-1 - margin])
+        # Set heads (last point with margin)
+        self.line1_head.set_data([self.t[-1-margin]], [self.x[-1-margin]])
+        self.line2_head.set_data([self.t[-1-margin]], [self.y[-1-margin]])
+        self.line3_head.set_data([self.t[-1-margin]], [self.z[-1-margin]])
 
-        self._drawn_artists = [self.line1, self.line1_tail, self.line1_head,self.line2, self.line2_tail, self.line2_head,self.line3, self.line3_tail, self.line3_head]
+        # Return all updated lines for blitting
+        return [self.line1, self.line1_tail, self.line1_head,
+                self.line2, self.line2_tail, self.line2_head,
+                self.line3, self.line3_tail, self.line3_head]

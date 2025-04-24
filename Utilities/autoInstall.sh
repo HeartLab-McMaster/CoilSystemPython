@@ -26,6 +26,6 @@ cd -
 printf '\e[48;5;88m ACTION REQUIRED BELOW \n'
 read -n 1 -p "Press enter to install pydc1394 (firewire camera)..." mainmenuinput
 printf '\e[48;5;0m'
-cd $(pwd)/pydc1394-master
+cd $(pwd)/pydc1394
 python3 setup.py install
 cd -

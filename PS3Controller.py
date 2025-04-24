@@ -3,9 +3,9 @@ from mathfx import sind, cosd
 
 pygame.init()
 pygame.joystick.init()
-joystick = pygame.joystick.Joystick(0)
-joystick.init()
-
+# joystick = pygame.joystick.Joystick(0)
+# joystick.init()
+ 
 '''
 PS3 Controllers can be turned on by presing PS button.
 If you see one solid indicator light, it is on.
@@ -13,6 +13,7 @@ If you see four lights blinking it is off.
 '''
 
 class DualShock(object):
+
     KEY = {
         'CROSS': 0,
         'CIRCLE': 1,
@@ -117,9 +118,14 @@ class DualShock(object):
 if __name__ == "__main__":
     ''' Run this script directly for testing '''
     import time
+  
     j = DualShock()
     while True:
         j.update()
         print(j.axis_data)
+         
+
+
+
         print(j.button_data)
         time.sleep(0.1)

@@ -30,6 +30,8 @@ def oscBetween(currentTime,oscShape,frequency,bound1,bound2,phaseOffset=0):
     time = currentTime + 1/frequency*phaseOffset
     if oscShape == 'sin':
         return 0.5 * (lowerBound+upperBound) + (upperBound-lowerBound)*0.5 * sin(2*pi*frequency*(time-0.25/frequency))
+    elif oscShape == 'cos':
+        return 0.5 * (lowerBound+upperBound) + (upperBound-lowerBound)*0.5 * cos(2*pi*frequency*time)
     elif oscShape == 'saw':
         return lowerBound + time*frequency*(upperBound-lowerBound) % (upperBound-lowerBound)
     elif oscShape == 'square':

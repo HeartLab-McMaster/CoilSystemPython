@@ -13,6 +13,9 @@ import time
 from mathfx import *
 from math import pi, sin, cos, sqrt, atan2, degrees
 from PyQt5.QtCore import pyqtSignal, QMutexLocker, QMutex, QThread
+import csv
+import pandas as pd
+import os
 
 def subthreadNotDefined():
     print('Subthread not defined.')
@@ -21,14 +24,19 @@ def subthreadNotDefined():
 class SubThread(QThread):
     statusSignal = pyqtSignal(str)
 
-    def __init__(self,field,vision,joystick=None,parent=None,):
+    def __init__(self,field,vision1, vision2, vision3, joystick=None,parent=None,):
         super(SubThread, self).__init__(parent)
         self.stopped = False
+        
         self.mutex = QMutex()
         self.field = field
-        self.vision = vision
+        # self.vision = vision
+        self.vision1 = vision1  
+        self.vision2 = vision2  
+        self.vision3 = vision3  
         self.joystick = joystick
         self._subthreadName = ''
+        self.running = True
         self.params = [0,0,0,0,0]
         self.labelOnGui = {'twistField': ['Frequency (Hz)','Magniude (mT)','AzimuthalAngle (deg)','PolarAngle (deg)','SpanAngle (deg)'],
                         'rotateXY': ['Frequency (Hz)','Magniude (mT)','N/A','N/A','N/A'],
@@ -38,6 +46,7 @@ class SubThread(QThread):
                         'osc_triangle': ['Frequency (Hz)','bound1 (mT)','bound2 (mT)','Azimuth [0,360] (deg)','Polar [-90,90] (deg)'],
                         'osc_square': ['Frequency (Hz)','bound1 (mT)','bound2 (mT)','Azimuth [0,360] (deg)','Polar [-90,90] (deg)'],
                         'osc_sin': ['Frequency (Hz)','bound1 (mT)','bound2 (mT)','Azimuth [0,360] (deg)','Polar [-90,90] (deg)'],
+                        'osc_cos': ['Frequency (Hz)','bound1 (mT)','bound2 (mT)','Azimuth [0,360] (deg)','Polar [-90,90] (deg)'],
                         'oni_cutting': ['Frequency (Hz)','Magnitude (mT)','angleBound1 (deg)','angleBound2 (deg)','N/A'],
                         'examplePiecewiseFunction': ['Frequency (Hz)','Magnitude (mT)','angle (deg)','period1 (0-1)','period2 (0-1)'],
                         'ellipse': ['Frequency (Hz)','Azimuthal Angle (deg)','B_horzF (mT)','B_vert (mT)','B_horzB (mT)'],
@@ -45,12 +54,16 @@ class SubThread(QThread):
                         'swimmerPathFollowing': ['Frequency (Hz)','Magniude (mT)','temp angle','N/A','N/A'],
                         'swimmerBenchmark': ['bias angle (deg)','N/A','N/A','N/A','N/A'],
                         'tianqiGripper': ['N/A','Magnitude (mT)','Frequency (Hz)','Direction (deg)','N/A'],
+                        'fromCSV': ['N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
+                        'formulaControlledField': ['N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
                         'default':['param0','param1','param2','param3','param4']}
         self.defaultValOnGui = {
                         'twistField': [0,0,0,0,0],
                         'drawing': [0,0,0,1,0],
                         'swimmerPathFollowing': [-20,2,0,0,0],
                         'tianqiGripper': [0,15,0.5,0,0],
+                        'fromCSV': [0, 0, 0, 0, 0],
+                        'formulaControlledField': [0, 0, 0, 0, 0],
                         'default':[0,0,0,0,0]
                         }
         self.minOnGui = {'twistField': [-100,0,-1080,0,0],
@@ -61,11 +74,14 @@ class SubThread(QThread):
                         'osc_triangle': [-100,-20,-20,0,-90],
                         'osc_square': [-100,-20,-20,0,-90],
                         'osc_sin': [-100,-20,-20,0,-90],
+                        'osc_cos': [-100, -20, -20, 0, -90],
                         'oni_cutting': [-100,-14,-720,-720,0],
                         'ellipse': [-100,-720,0,0,0],
                         'examplePiecewiseFunction': [-20,0,-360,0,0],
                         'swimmerPathFollowing': [-100,0,0,0,0],
                         'tianqiGripper': [0,0,0,-720,0],
+                        'fromCSV': [0, 0, 0, 0, 0],
+                        'formulaControlledField': [0, 0, 0, 0, 0],
                         'default':[0,0,0,0,0]}
         self.maxOnGui = {'twistField': [100,14,1080,180,360],
                         'rotateXY': [100,14,0,0,0],
@@ -75,6 +91,7 @@ class SubThread(QThread):
                         'osc_triangle': [100,20,20,360,90],
                         'osc_square': [100,20,20,360,90],
                         'osc_sin': [100,20,20,360,90],
+                        'osc_cos': [100, 20, 20, 360, 90],
                         'oni_cutting': [100,14,720,720,0],
                         'ellipse': [100,720,20,20,20],
                         'examplePiecewiseFunction': [20,20,360,1,1],
@@ -82,6 +99,8 @@ class SubThread(QThread):
                         'swimmerPathFollowing': [100,20,360,0,0],
                         'swimmerBenchmark': [360,0,0,0,0],
                         'tianqiGripper': [10,20,120,720,0],
+                        'fromCSV': [0, 0, 0, 0, 0],
+                        'formulaControlledField': [0, 0, 0, 0, 0],
                         'default':[0,0,0,0,0]}
 
     def setup(self,subThreadName):
@@ -93,10 +112,25 @@ class SubThread(QThread):
             self.stopped = True
 
     def run(self):
+        
+        # while self.running:  # 让线程持续运行
+        #     print(f"Current Field Values -> X: {self.field.x}, Y: {self.field.y}, Z: {self.field.z}")  # 打印电流数值
+        #      # ✅ 处理 3 个摄像头的帧
+        #     if self.vision1:     
+        #         frame1 = self.vision1.updateFrame()
+        #     if self.vision2:
+        #         frame2 = self.vision2.updateFrame()
+        #     if self.vision3:
+        #         frame3 = self.vision3.updateFrame()
+                
+            # time.sleep(1)  # 每秒打印一次，避免刷屏过快
+        self.stopped = False
         subthreadFunction = getattr(self,self._subthreadName,subthreadNotDefined)
         subthreadFunction()
 
-    def setParam0(self,val): self.params[0] = val
+    def setParam0(self,val): 
+        self.params[0] = val
+        # print(f"param0 被设置为 {val}")
     def setParam1(self,val): self.params[1] = val
     def setParam2(self,val): self.params[2] = val
     def setParam3(self,val): self.params[3] = val
@@ -119,12 +153,23 @@ class SubThread(QThread):
         #=============================
         startTime = time.time()
         # video writing feature
-        self.vision.startRecording('drawing.avi')
+        # self.vision.startRecording('drawing.avi')
+           # ✅ Start video recording for all 3 cameras
+        self.vision1.startRecording('drawing1.avi')
+        self.vision2.startRecording('drawing2.avi')
+        self.vision3.startRecording('drawing3.avi')
+
         while True:
-            self.vision.clearDrawingRouting() # if we don't run this in a while loop, it freezes!!! (because *addDrawing* keeps adding new commands)
-            self.vision.addDrawing('pathUT', self.params)
-            self.vision.addDrawing('circle',[420,330,55])
-            self.vision.addDrawing('arrow',[0,0,325,325])
+            # ✅ Clear drawings for all 3 cameras
+            for vision in [self.vision1, self.vision2, self.vision3]:
+                if vision:
+                    vision.clearDrawingRouting()
+                # ✅ Add drawings for all 3 cameras
+            for vision in [self.vision1, self.vision2, self.vision3]:
+                if vision:
+                    vision.addDrawing('pathUT', self.params)
+                    vision.addDrawing('circle', [420, 330, 55])
+                    vision.addDrawing('arrow', [0, 0, 325, 325])
             # you can also do somthing like:
             # drawing an arrow from "the robot" to "the destination point"
             t = time.time() - startTime # elapsed time (sec)
@@ -132,87 +177,126 @@ class SubThread(QThread):
             self.field.setY(0)
             self.field.setZ(0)
             if self.stopped:
-                self.vision.stopRecording()
+                print("✅ Stopping drawing thread and saving recordings.")
+                self.vision1.stopRecording()
+                self.vision2.stopRecording()
+                self.vision3.stopRecording()
                 return
 
     def swimmerPathFollowing(self):
         '''
-        An example of autonomous path following of a sinusoidal swimmer at air-water interfaceself.
+        An example of autonomous path following of a sinusoidal swimmer at air-water interface.
         This example follows the path "M".
         '''
         #=============================
-        # reference params
+        # Reference params:
         # 0 'Frequency (Hz)'
         # 1 'Magnitude (mT)'
-        # 3 'temp angle'
+        # 2 'Temp angle'
         #=============================
-        # video writing feature
-        self.vision.startRecording('path.avi')
+
+        # Start video recording for all 3 cameras
+        self.vision1.startRecording('path1.avi')
+        self.vision2.startRecording('path2.avi')
+        self.vision3.startRecording('path3.avi')
+
         startTime = time.time()
-        state = 0 # indicates which goal point the robot is approaching. e.g. state0 -> approaching goalsX[0], goalsY[0]
-        rect = [640,480] # size of the image. Format: width, height.
-        pointsX = [0.2,0.3,0.4,0.5,0.6,0.7,0.8] # normalized position [0,1]
-        pointsY = [0.7,0.3,0.3,0.7,0.3,0.3,0.7] # normalized position [0,1]
-        goalsX = [int(rect[0]* i) for i in pointsX] # actual position (pixel)
-        goalsY = [int(rect[1]* i) for i in pointsY] # actual position (pixel)
-        tolerance = 10
-        # It is considered that the robot has reached the point once the distance is less than *tolerance*
-        toleranceDeviation = 30
-        # Path correction is necessary when deviation exceeds this value.
-        magnitudeCorrection = 1
-        # Slow down the speed of the robot t oavoid overshoot when it is close to goal points
+        state = 0  # Indicates which goal point the robot is approaching
+        rect = [640, 480]  # Image size in pixels
+        pointsX = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]  # Normalized X positions
+        pointsY = [0.7, 0.3, 0.3, 0.7, 0.3, 0.3, 0.7]  # Normalized Y positions
+        goalsX = [int(rect[0] * i) for i in pointsX]  # Convert to pixel positions
+        goalsY = [int(rect[1] * i) for i in pointsY]
+
+        tolerance = 10  # Distance threshold to consider reaching a goal
+        toleranceDeviation = 30  # Threshold for path correction
+        magnitudeCorrection = 1  # Factor to avoid overshooting near goals
+
         while True:
-            # obtain positions
-            x = self.vision.agent1.x # curent position of the robot
-            y = self.vision.agent1.y
-            goalX = goalsX[state] # must be int
-            goalY = goalsY[state] # must be int
-            goalXPrevious = goalsX[state-1] # must be int
-            goalYPrevious = goalsY[state-1] # must be int
+            # =============================
+            # Get robot position from all 3 cameras
+            # =============================
+            positions = []
+            for vision in [self.vision1, self.vision2, self.vision3]:
+                if vision and hasattr(vision, "agent1"):
+                    positions.append((vision.agent1.x, vision.agent1.y))
+            
+            if not positions:  # 如果所有摄像头都没有检测到目标
+                print("⚠️ Warning: No valid positions detected from any camera!")
+                continue
 
-            # draw reference lines
-            self.vision.clearDrawingRouting() # if we don't run this in a while loop, it freezes!!! (because *addDrawing* keeps adding new commands)
-            self.vision.addDrawing('closedPath',[goalsX,goalsY])
-            self.vision.addDrawing('circle',[goalX,goalY,5])
-            self.vision.addDrawing('line',[x,y,goalX,goalY])
+            # 计算 3 个摄像头的均值作为机器人位置，减少单个摄像头误差
+            x = sum(pos[0] for pos in positions) / len(positions)
+            y = sum(pos[1] for pos in positions) / len(positions)
 
-            #=======================================================
-            # calculate the heading angle
-            #=======================================================
-            distance = distanceBetweenPoints(x,y,goalX,goalY)
-            footX, footY = perpendicularFootToLine(x,y,goalXPrevious,goalYPrevious,goalX,goalY)
-            deviation = distanceBetweenPoints(x,y,footX,footY)
-            if deviation > toleranceDeviation:
-                # moving perpendicular to the line
-                angle = degrees(atan2(-(footY-y),footX-x))
+            # 获取当前目标点
+            goalX = goalsX[state]
+            goalY = goalsY[state]
+
+            # 只有 `state > 0` 时才访问 `goalXPrevious`
+            if state > 0:
+                goalXPrevious = goalsX[state - 1]
+                goalYPrevious = goalsY[state - 1]
             else:
-                angleRobotToGoal = atan2(-(goalY-y),goalX-x)
-                angleRobotToFoot = atan2(-(footY-y),footX-x)
+                goalXPrevious = goalX
+                goalYPrevious = goalY
+
+            # =============================
+            # Draw reference lines on all 3 cameras
+            # =============================
+            for vision in [self.vision1, self.vision2, self.vision3]:
+                if vision:
+                    vision.clearDrawingRouting()  # 防止绘图数据累积
+                    vision.addDrawing('closedPath', [goalsX, goalsY])
+                    vision.addDrawing('circle', [goalX, goalY, 5])
+                    vision.addDrawing('line', [x, y, goalX, goalY])
+
+            # =======================================================
+            # Calculate heading angle for movement
+            # =======================================================
+            distance = distanceBetweenPoints(x, y, goalX, goalY)
+            footX, footY = perpendicularFootToLine(x, y, goalXPrevious, goalYPrevious, goalX, goalY)
+            deviation = distanceBetweenPoints(x, y, footX, footY)
+
+            if deviation > toleranceDeviation:
+                # Move perpendicular to the reference path
+                angle = degrees(atan2(-(footY - y), footX - x))
+            else:
+                angleRobotToGoal = atan2(-(goalY - y), goalX - x)
+                angleRobotToFoot = atan2(-(footY - y), footX - x)
                 angleCorrectionOffset = normalizeAngle(angleRobotToFoot - angleRobotToGoal) * deviation / toleranceDeviation
                 angle = degrees(angleRobotToGoal + angleCorrectionOffset)
-                # print(angleRobotToGoal,angle)
 
-            if distance <= tolerance * 3:
-                magnitudeCorrection = 0.5
-            else:
-                magnitudeCorrection = 1
-            # check if it has reached the goal point
+            # Reduce speed near the target
+            magnitudeCorrection = 0.5 if distance <= tolerance * 3 else 1
+
+            # =============================
+            # Check if the goal is reached
+            # =============================
             if distance <= tolerance:
                 state += 1
-                print('>>> Step to point {} <<<'.format(state))
+                print(f'>>> Step to point {state} <<<')
 
-
-            # apply magnetic field
-            t = time.time() - startTime # elapsed time (sec)
+            # =============================
+            # Apply magnetic field
+            # =============================
+            t = time.time() - startTime
             theta = 2 * pi * self.params[0] * t
-            fieldX = magnitudeCorrection * self.params[1] * cos(theta) * cosd(angle+self.params[2])
-            fieldY = magnitudeCorrection * self.params[1] * cos(theta) * sind(angle+self.params[2])
+            fieldX = magnitudeCorrection * self.params[1] * cos(theta) * cosd(angle + self.params[2])
+            fieldY = magnitudeCorrection * self.params[1] * cos(theta) * sind(angle + self.params[2])
             fieldZ = magnitudeCorrection * self.params[1] * sin(theta)
             self.field.setX(fieldX)
             self.field.setY(fieldY)
             self.field.setZ(fieldZ)
-            if self.stopped or state == len(pointsX):
-                self.vision.stopRecording()
+
+            # =============================
+            # Stop condition: All points reached
+            # =============================
+            if self.stopped or state >= len(pointsX):
+                print("✅ Path following complete. Stopping all recordings.")
+                self.vision1.stopRecording()
+                self.vision2.stopRecording()
+                self.vision3.stopRecording()
                 return
 
     def tianqiGripper(self):
@@ -314,73 +398,108 @@ class SubThread(QThread):
 
     def swimmerBenchmark(self):
         '''
-        An example of testing the velocity of the swimmer with respect to frequency and magnitude.
+        Benchmarking swimmer velocity with respect to frequency and magnitude.
         It demonstrates:
-            - path following: Point0 -> Point1 -> Point0
-            - do the same path following task for different frequencies. (Benchmarking *velocity* vs *frequency*)
-            - draw lines and circles on the frame in real time
-
+            - Path following: Point0 -> Point1 -> Point0
+            - Repeating the task for different frequencies
+            - Drawing real-time reference lines and target markers
         '''
-        # video writing feature
-        self.vision.startRecording('benchmark.avi')
+        # ✅ Start video recording for all 3 cameras
+        self.vision1.startRecording('benchmark1.avi')
+        self.vision2.startRecording('benchmark2.avi')
+        self.vision3.startRecording('benchmark3.avi')
+
         startTime = time.time()
-        state = 0 # indicates which goal point the robot is approaching. e.g. state0 -> approaching goalsX[0], goalsY[0]
-        freq = [-15,-15,-17,-19,-21,-23,-25] # the first frequency is the freq that the robot is heading to the start point.
-        freq = [i - 8 for i in freq] # the first frequency is the freq that the robot is heading to the start point.
+        state = 0  # Current target point
+        freq = [-15, -15, -17, -19, -21, -23, -25]  # Frequencies
+        freq = [i - 8 for i in freq]  # Adjusted frequency offset
         magnitude = 8
-        benchmarkState = 0 # indicates which frequency the program is testing
+        benchmarkState = 0  # Current frequency being tested
 
-        rect = [640,480] # size of the image. Format: width, height.
-        pointsX = [0.2,0.8] # normalized position [0,1]
-        pointsY = [0.2,0.8] # normalized position [0,1]
-        goalsX = [int(rect[0]* i) for i in pointsX] # actual position (pixel)
-        goalsY = [int(rect[1]* i) for i in pointsY] # actual position (pixel)
-        tolerance = 20 # It is considered that the robot has reached the point once the distance is less than *tolerance*
-        print('Moving to the home position. Frequency {} Hz'.format(freq[benchmarkState]))
+        rect = [640, 480]  # Image size
+        pointsX = [0.2, 0.8]  # Normalized X positions
+        pointsY = [0.2, 0.8]  # Normalized Y positions
+        goalsX = [int(rect[0] * i) for i in pointsX]  # Convert to pixels
+        goalsY = [int(rect[1] * i) for i in pointsY]
+
+        tolerance = 20  # Distance threshold to reach a goal
+
+        print(f'Moving to the home position. Frequency {freq[benchmarkState]} Hz')
+
         while True:
-            # obtain positions
-            x = self.vision.agent1.x
-            y = self.vision.agent1.y
-            goalX = goalsX[state] # must be int
-            goalY = goalsY[state] # must be int
+            # =============================
+            # Get robot position from all 3 cameras
+            # =============================
+            positions = []
+            for vision in [self.vision1, self.vision2, self.vision3]:
+                if vision and hasattr(vision, "agent1"):
+                    positions.append((vision.agent1.x, vision.agent1.y))
 
-            # draw reference lines
-            self.vision.clearDrawingRouting() # if we don't run this in a while loop, it freezes!!! (because *addDrawing* keeps adding new commands)
-            self.vision.addDrawing('closedPath',[goalsX,goalsY])
-            self.vision.addDrawing('circle',[goalX,goalY,5])
-            self.vision.addDrawing('line',[x,y,goalX,goalY])
+            if not positions:
+                print("⚠️ Warning: No valid positions detected from any camera!")
+                continue  # Skip this iteration if no valid positions
 
-            # calculate distance and angle
-            distance = sqrt((goalX - x)**2 + (goalY - y)**2)
-            angle = degrees(atan2(-(goalY-y),goalX-x))   # computers take top left point as (0,0)
+            # Calculate averaged position from multiple cameras
+            x = sum(pos[0] for pos in positions) / len(positions)
+            y = sum(pos[1] for pos in positions) / len(positions)
 
+            # Get current target point
+            goalX = goalsX[state]
+            goalY = goalsY[state]
 
-            # check if it has reached the goal point
+            # =============================
+            # Draw reference lines on all 3 cameras
+            # =============================
+            for vision in [self.vision1, self.vision2, self.vision3]:
+                if vision:
+                    vision.clearDrawingRouting()
+                    vision.addDrawing('closedPath', [goalsX, goalsY])
+                    vision.addDrawing('circle', [goalX, goalY, 5])
+                    vision.addDrawing('line', [x, y, goalX, goalY])
+
+            # =============================
+            # Calculate distance and angle
+            # =============================
+            distance = sqrt((goalX - x) ** 2 + (goalY - y) ** 2)
+            angle = degrees(atan2(-(goalY - y), goalX - x))  # Convert to degrees
+
+            # =============================
+            # Check if the goal is reached
+            # =============================
             if distance <= tolerance:
-                # if at the starting point, start a new round of benchmark test
                 if state == 0:
                     benchmarkState += 1
                     if benchmarkState < len(freq):
-                        print('Case {} - Benchmark Frequency {} Hz'.format(benchmarkState,freq[benchmarkState]))
-                state += 1  # move to the next target point
-                # if the path is finished, set the home position as the next goal point
-                if state == len(pointsX):
-                    state = 0
-                # if the benchmark is finished, sdo not display the next point
-                if benchmarkState < len(freq):
-                    print('    >>> Step to point {} <<<'.format(state))
+                        print(f'Case {benchmarkState} - Benchmark Frequency {freq[benchmarkState]} Hz')
 
-            # apply magnetic field
-            t = time.time() - startTime # elapsed time (sec)
+                state += 1  # Move to next goal
+                if state == len(pointsX):
+                    state = 0  # Reset path if completed
+
+                if benchmarkState < len(freq):
+                    print(f'    >>> Step to point {state} <<<')
+
+            # =============================
+            # Apply magnetic field
+            # =============================
+            t = time.time() - startTime
             theta = 2 * pi * freq[benchmarkState] * t
-            fieldX = magnitude * cos(theta) * cosd(angle+self.params[0])
-            fieldY = magnitude * cos(theta) * sind(angle+self.params[0])
+            fieldX = magnitude * cos(theta) * cosd(angle + self.params[0])
+            fieldY = magnitude * cos(theta) * sind(angle + self.params[0])
             fieldZ = magnitude * sin(theta)
+
             self.field.setX(fieldX)
             self.field.setY(fieldY)
             self.field.setZ(fieldZ)
+
+            # =============================
+            # Stop condition: All frequencies tested
+            # =============================
             if self.stopped or benchmarkState == len(freq):
-                self.vision.stopRecording()
+                print("✅ Benchmark complete. Stopping all recordings.")
+                self.vision1.stopRecording()
+                self.vision2.stopRecording()
+                self.vision3.stopRecording()
                 return
 
     def examplePiecewiseFunction(self):
@@ -595,8 +714,37 @@ class SubThread(QThread):
             self.field.setX(fieldX)
             self.field.setY(fieldY)
             self.field.setZ(fieldZ)
+           
+      
+            # time.sleep(1/2000)  # 控制刷新速率，避免 CPU 飙高
+
             if self.stopped:
                 return
+    def osc_cos(self):
+        #=============================
+        # reference params
+        # 0 'Frequency (Hz)'
+        # 1 'Lowerbound (mT)'
+        # 2 'Upperbound (mT)'
+        # 3 'Azimuthal Angle (deg)'
+        # 4 'Polar Angle (deg)'
+        #=============================
+        startTime = time.time()
+        while True:
+            t = time.time() - startTime # elapsed time (sec)
+            magnitude = oscBetween(t, 'cos', self.params[0], self.params[1], self.params[2])
+            fieldZ = magnitude * sind(self.params[4])
+            fieldX = magnitude * cosd(self.params[4]) * cosd(self.params[3])
+            fieldY = magnitude * cosd(self.params[4]) * sind(self.params[3])
+            self.field.setX(fieldX)
+            self.field.setY(fieldY)
+            self.field.setZ(fieldZ)
+            if self.stopped:
+                return
+            
+    def setPlotCanvas(self, canvas):
+        self.canvas = canvas
+
 
     def rotateXY(self):
         #=============================
@@ -650,4 +798,88 @@ class SubThread(QThread):
             self.field.setY(0)
             self.field.setZ(fieldZ)
             if self.stopped:
+                return
+    
+    def fromCSV(self):
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        csv_path = os.path.join(base_dir, "data", "waveform.csv")
+
+        df = pd.read_csv(csv_path)
+
+        num_rows = len(df)
+
+        for i in range(num_rows):
+            x1 = df['X1_val'][i]
+            x2 = df['X2_val'][i]
+            y1 = df['Y1_val'][i]
+            y2 = df['Y2_val'][i]
+            z1 = df['Z1_val'][i]
+            z2 = df['Z2_val'][i]
+
+            self.field.dac.s826_aoPin(5, x1 / 4.433)  # X1
+            self.field.dac.s826_aoPin(1, x2 / 5.024)  # X2
+            self.field.dac.s826_aoPin(2, y1 / 5.224)  # Y1
+            self.field.dac.s826_aoPin(6, y2 / 5.224)  # Y2
+            self.field.dac.s826_aoPin(3, z1 / 4.879)  # Z1
+            self.field.dac.s826_aoPin(7, z2 / 5.000)  # Z2
+
+            x = x1 + x2
+            y = y1 + y2
+            z = z1 + z2
+            self.field.x = x
+            self.field.y = y
+            self.field.z = z
+
+         
+            if i < num_rows - 1:
+                dt = df['t'][i+1] - df['t'][i]
+                time.sleep(max(0, dt)) 
+
+            if self.stopped:
+                print("✅ fromCSV thread stopped.")
+                return
+
+        print("✅ fromCSV completed")
+
+    def formulaControlledField(self):
+        import math
+        from math import pi, sin, cos
+
+        freq = 1
+        start_time = time.time()
+
+        while True:
+            t = time.time() - start_time
+
+
+            x = sin(pi*freq*t)
+            # x = 0
+            # y = 3 * cos(2 * pi * freq * t + pi / 2)
+            y = 0
+            # z = sin(2 * pi * freq * t) + cos(2 * pi * freq * t)
+            z = 0
+            x1 = x / 2
+            x2 = x / 2
+            y1 = y / 2
+            y2 = y / 2
+            z1 = z / 2
+            z2 = z / 2
+
+            self.field.dac.s826_aoPin(5, x1 / 4.433)  # X1
+            self.field.dac.s826_aoPin(1, x2 / 5.024)  # X2
+            self.field.dac.s826_aoPin(2, y1 / 5.224)  # Y1
+            self.field.dac.s826_aoPin(6, y2 / 5.224)  # Y2
+            self.field.dac.s826_aoPin(3, z1 / 4.879)  # Z1
+            self.field.dac.s826_aoPin(7, z2 / 5.000)  # Z2
+
+            self.field.x = x
+            self.field.y = y
+            self.field.z = z
+
+  
+
+            time.sleep(1 / 200)
+
+            if self.stopped:
+                print("✅ Formula controlled field stopped.")
                 return

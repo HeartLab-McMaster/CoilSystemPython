@@ -39,9 +39,9 @@ class SubThread(QThread):
         self.running = True
         self.params = [0,0,0,0,0]
         self.labelOnGui = {'twistField': ['Frequency (Hz)','Magniude (mT)','AzimuthalAngle (deg)','PolarAngle (deg)','SpanAngle (deg)'],
-                        'rotateXY': ['Frequency (Hz)','Magniude (mT)','N/A','N/A','N/A'],
-                        'rotateYZ': ['Frequency (Hz)','Magniude (mT)','N/A','N/A','N/A'],
-                        'rotateXZ': ['Frequency (Hz)','Magniude (mT)','N/A','N/A','N/A'],
+                        'rotateXY': ['Frequency (Hz)','Magnitude-X (mT)','Magnitude-Y (mT)','N/A','N/A'],
+                        'rotateYZ': ['Frequency (Hz)','Magnitude-Y (mT)','Magnitude-Z (mT)','N/A','N/A'],
+                        'rotateXZ': ['Frequency (Hz)','Magnitude-X (mT)','Magnitude-Z (mT)','N/A','N/A'],
                         'osc_saw': ['Frequency (Hz)','bound1 (mT)','bound2 (mT)','Azimuth [0,360] (deg)','Polar [-90,90] (deg)'],
                         'osc_triangle': ['Frequency (Hz)','bound1 (mT)','bound2 (mT)','Azimuth [0,360] (deg)','Polar [-90,90] (deg)'],
                         'osc_square': ['Frequency (Hz)','bound1 (mT)','bound2 (mT)','Azimuth [0,360] (deg)','Polar [-90,90] (deg)'],
@@ -56,6 +56,8 @@ class SubThread(QThread):
                         'tianqiGripper': ['N/A','Magnitude (mT)','Frequency (Hz)','Direction (deg)','N/A'],
                         'fromCSV': ['N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
                         'formulaControlledField': ['N/A', 'N/A', 'N/A', 'N/A', 'N/A'],
+                        'crawler_walking': ['Bmax (mT)', 'Frequency (Hz)', 'Max2'],
+                        'xy_angle': ['Magnitude (mT)', 'Angle (deg)','N/A','N/A','N/A'],
                         'default':['param0','param1','param2','param3','param4']}
         self.defaultValOnGui = {
                         'twistField': [0,0,0,0,0],
@@ -64,35 +66,38 @@ class SubThread(QThread):
                         'tianqiGripper': [0,15,0.5,0,0],
                         'fromCSV': [0, 0, 0, 0, 0],
                         'formulaControlledField': [0, 0, 0, 0, 0],
+                        'crawler_walking': [5, 5, 5],
                         'default':[0,0,0,0,0]
                         }
         self.minOnGui = {'twistField': [-100,0,-1080,0,0],
-                        'rotateXY': [-100,0,0,0,0],
-                        'rotateYZ': [-100,0,0,0,0],
-                        'rotateXZ': [-100,0,0,0,0],
+                        'rotateXY': [-100,-25,-25,-25,-25],
+                        'rotateYZ': [-100,-25,-25,-25,-25],
+                        'rotateXZ': [-100,-25,-25,-25,-25],
                         'osc_saw': [-100,-20,-20,0,-90],
                         'osc_triangle': [-100,-20,-20,0,-90],
                         'osc_square': [-100,-20,-20,0,-90],
                         'osc_sin': [-100,-20,-20,0,-90],
                         'osc_cos': [-100, -20, -20, 0, -90],
-                        'oni_cutting': [-100,-14,-720,-720,0],
+                        'oni_cutting': [-100,-25,-720,-720,0],
                         'ellipse': [-100,-720,0,0,0],
                         'examplePiecewiseFunction': [-20,0,-360,0,0],
                         'swimmerPathFollowing': [-100,0,0,0,0],
                         'tianqiGripper': [0,0,0,-720,0],
                         'fromCSV': [0, 0, 0, 0, 0],
                         'formulaControlledField': [0, 0, 0, 0, 0],
+                        'crawler_walking': [-50, 0, -50],
+                        'xy_angle': [-50, 0, -50],
                         'default':[0,0,0,0,0]}
-        self.maxOnGui = {'twistField': [100,14,1080,180,360],
-                        'rotateXY': [100,14,0,0,0],
-                        'rotateYZ': [100,14,0,0,0],
-                        'rotateXZ': [100,14,0,0,0],
+        self.maxOnGui = {'twistField': [100,25,1080,180,360],
+                        'rotateXY': [100,25,25,25,25],
+                        'rotateYZ': [100,25,25,25,25],
+                        'rotateXZ': [100,25,25,25,25],
                         'osc_saw': [100,20,20,360,90],
                         'osc_triangle': [100,20,20,360,90],
                         'osc_square': [100,20,20,360,90],
                         'osc_sin': [100,20,20,360,90],
                         'osc_cos': [100, 20, 20, 360, 90],
-                        'oni_cutting': [100,14,720,720,0],
+                        'oni_cutting': [100,25,720,720,0],
                         'ellipse': [100,720,20,20,20],
                         'examplePiecewiseFunction': [20,20,360,1,1],
                         'drawing':[2,1000,1000,10,0],
@@ -101,6 +106,8 @@ class SubThread(QThread):
                         'tianqiGripper': [10,20,120,720,0],
                         'fromCSV': [0, 0, 0, 0, 0],
                         'formulaControlledField': [0, 0, 0, 0, 0],
+                        'crawler_walking': [50, 10, 50],
+                        'xy_angle': [50, 360, 50],
                         'default':[0,0,0,0,0]}
 
     def setup(self,subThreadName):
@@ -757,7 +764,7 @@ class SubThread(QThread):
             t = time.time() - startTime # elapsed time (sec)
             theta = 2 * pi * self.params[0] * t
             fieldX = self.params[1] * cos(theta)
-            fieldY = self.params[1] * sin(theta)
+            fieldY = self.params[2] * sin(theta)
             self.field.setX(fieldX)
             self.field.setY(fieldY)
             self.field.setZ(0)
@@ -775,7 +782,7 @@ class SubThread(QThread):
             t = time.time() - startTime # elapsed time (sec)
             theta = 2 * pi * self.params[0] * t
             fieldY = self.params[1] * cos(theta)
-            fieldZ = self.params[1] * sin(theta)
+            fieldZ = self.params[2] * sin(theta)
             self.field.setX(0)
             self.field.setY(fieldY)
             self.field.setZ(fieldZ)
@@ -793,7 +800,7 @@ class SubThread(QThread):
             t = time.time() - startTime # elapsed time (sec)
             theta = 2 * pi * self.params[0] * t
             fieldX = self.params[1] * cos(theta)
-            fieldZ = self.params[1] * sin(theta)
+            fieldZ = self.params[2] * sin(theta)
             self.field.setX(fieldX)
             self.field.setY(0)
             self.field.setZ(fieldZ)
@@ -837,7 +844,7 @@ class SubThread(QThread):
 
             if self.stopped:
                 print("✅ fromCSV thread stopped.")
-                return
+                returnI
 
         print("✅ fromCSV completed")
 
@@ -883,3 +890,49 @@ class SubThread(QThread):
             if self.stopped:
                 print("✅ Formula controlled field stopped.")
                 return
+    
+    def crawler_walking(self):
+        #=============================
+        # reference params
+        # 0 'Bmax (mT)'
+        # 1 'Frequency (Hz)'
+        #=============================
+        startTime = time.time()
+        while True:
+            t = time.time() - startTime # elapsed time (sec)
+            bmax = self.params[0]
+            freq = self.params[1]
+            max2 = self.params[2]
+            b_0 = (t % (1/freq)) * freq * bmax
+            theta = pi + (t % (1/freq)) * freq * pi/4
+            theta2 = 2 * pi * self.params[0] * t
+            fieldX = b_0 * cos(theta)
+            fieldY = b_0 * max2 * sin(theta)
+            # fieldY = b_0 * sin(theta)
+            field2 = bmax * sin(theta2)
+            # self.field.setX(-max2)
+            self.field.setX(fieldX)
+            self.field.setY(fieldY)
+            self.field.setZ(0)
+            if self.stopped:
+                return
+    
+    def xy_angle(self):
+        #=============================
+        # reference params
+        # 0 'Bmax (mT)'
+        # 1 'Frequency (Hz)'
+        #=============================
+        startTime = time.time()
+        while True:
+            t = time.time() - startTime # elapsed time (sec)
+            magnitude = self.params[0]
+            angle = self.params[1]
+            fieldX = magnitude * cosd(angle)
+            fieldY = magnitude * sind(angle)
+            self.field.setX(fieldX)
+            self.field.setY(fieldY)
+            self.field.setZ(0)
+            if self.stopped:
+                return
+        

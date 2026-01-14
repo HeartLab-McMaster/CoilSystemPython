@@ -50,7 +50,7 @@ vision3 = Vision(index=3, type='usb')
 #=========================================================
 # a class that handles the signal and callbacks of the GUI
 #=========================================================
-
+ENABLE_CAMERA=False
 
 class GUI(QMainWindow, Ui_MainWindow):
     def __init__(self):
@@ -65,9 +65,9 @@ class GUI(QMainWindow, Ui_MainWindow):
         self.connectSignals()
         self.linkWidgets()
         self._closing = False 
-         
-        self.camera_window = CameraWindow(field)
-        self.camera_window.show()  # 默认显示摄像头窗口
+        if ENABLE_CAMERA:
+            self.camera_window = CameraWindow(field)
+            self.camera_window.show()  # 默认显示摄像头窗口
 
         self.cbb_subThread.clear()
         self.cbb_subThread.addItems(list(self.thrd.labelOnGui.keys()))
@@ -82,8 +82,8 @@ class GUI(QMainWindow, Ui_MainWindow):
 
         self.thrd.stop()
         self.timer.stop()
-
-        self.camera_window.close()
+        if ENABLE_CAMERA:
+            self.camera_window.close()
 
         if joystick:
             joystick.quit()
@@ -277,7 +277,7 @@ class GUI(QMainWindow, Ui_MainWindow):
         minVals = self.thrd.minOnGui.get(subThreadName,self.thrd.minOnGui['default'])
         maxVals = self.thrd.maxOnGui.get(subThreadName,self.thrd.maxOnGui['default'])
         defaultVals = self.thrd.defaultValOnGui.get(subThreadName,self.thrd.defaultValOnGui['default'])
-        for i in range(5):
+        for i in range(len(labelNames)):
             targetLabel = 'lbl_subThreadParam' + str(i)
             targetSpinbox = 'dsb_subThreadParam' + str(i)
             getattr(self,targetLabel).setText(labelNames[i])
